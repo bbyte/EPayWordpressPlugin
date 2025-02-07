@@ -16,12 +16,13 @@ if (!defined('ABSPATH')) {
 /**
  * ePay OneTouch Payment Gateway
  *
- * Интегрира ePay OneTouch като метод за плащане в WooCommerce.
- * Поддържа токени за запазени карти и автоматични плащания.
+ * Integrates ePay OneTouch as a payment method in WooCommerce.
+ * Supports saved card tokens and automatic payments.
  *
  * @since 1.0.0
  */
-class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
+class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway
+{
     
     /**
      * Update order meta data in a way that's compatible with both old and new versions of WooCommerce
@@ -114,10 +115,10 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
                 'desc_tip' => true,
             ),
             'description' => array(
-                'title' => __('Описание', 'epay-onetouch'),
+                'title' => __('Description', 'epay-onetouch'),
                 'type' => 'textarea',
-                'description' => __('Това контролира описанието, което потребителят вижда по време на плащане.', 'epay-onetouch'),
-                'default' => __('Платете сигурно чрез ePay OneTouch', 'epay-onetouch'),
+                'description' => __('This controls the description which the user sees during checkout.', 'epay-onetouch'),
+                'default' => __('Pay securely via ePay OneTouch', 'epay-onetouch'),
                 'desc_tip' => true,
             ),
             'app_id' => array(
@@ -199,10 +200,10 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
     }
     
     /**
-     * Обработва ново плащане
-     * 
-     * @param int $order_id ID на поръчката
-     * @return array Резултат от обработката
+     * Process a new payment
+     *
+     * @param int $order_id Order ID
+     * @return array Processing result
      */
     public function process_payment($order_id) {
         $order = wc_get_order($order_id);
@@ -315,7 +316,7 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
             WC()->session->__unset('epay_auth_key');
             WC()->session->__unset('epay_order_id');
             
-            // Redirect to payment page
+            // Redirect customer to the payment page
             wp_redirect($payment['url']);
             exit;
             
@@ -326,7 +327,8 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
         }
     }
     
-    public function handle_auth_callback() {
+    public function handle_auth_callback()
+    {
         $ret = isset($_GET['ret']) ? sanitize_text_field($_GET['ret']) : '';
         
         if ($ret === 'authok') {
@@ -337,12 +339,15 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
         }
         exit;
     }
-    }
     
-    public function payment_fields() {
+    /**
+     * Output payment fields for the gateway
+     */
+    public function payment_fields()
+    {
         parent::payment_fields();
         
-        // Add radio buttons for payment type selection
+        // Display payment type selection for user
         echo '<div class="epay-payment-type">';
         echo '<p>' . __('Select payment type:', 'epay-onetouch') . '</p>';
         echo '<label><input type="radio" name="epay_payment_type" value="registered" checked> ' . __('Pay with ePay.bg account', 'epay-onetouch') . '</label><br>';
@@ -350,7 +355,8 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
         echo '</div>';
     }
     
-    public function handle_callback() {
+    public function handle_callback()
+    {
         $payment_id = isset($_GET['ID']) ? sanitize_text_field($_GET['ID']) : '';
         
         if (empty($payment_id)) {
@@ -358,7 +364,7 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
         }
         
         try {
-            // Find order by payment ID
+            // Find order by stored payment ID
             $orders = wc_get_orders(array(
                 'meta_key' => '_epay_payment_id',
                 'meta_value' => $payment_id,
@@ -371,17 +377,17 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
             
             $order = $orders[0];
             
-            // Check if this is a registered or unregistered payment
+            // Check payment type (registered or unregistered user)
             $payment_type = $order->get_meta('_epay_payment_type');
             
             if ($payment_type === 'unregistered') {
-                // Get merchant KIN for unregistered payment status check
+                // Get merchant KIN to check unregistered payment status
                 $merchant_kin = $this->get_option('merchant_kin');
                 $status = $this->api->check_unregistered_payment_status($payment_id, $merchant_kin);
                 
                 if ($status['status'] === 'OK' && isset($status['payment']['STATE'])) {
                     switch ($status['payment']['STATE']) {
-                        case 3: // Success
+                        case 3: // Payment successful
                             $order->payment_complete();
                             // Store transaction number
                             if (isset($status['payment']['NO'])) {
@@ -396,16 +402,16 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
                                 $this->update_order_meta($order, '_epay_token', $status['payment']['TOKEN']);
                             }
                             break;
-                        case 2: // Processing
+                        case 2: // Payment processing
                             $order->update_status('on-hold', __('Payment processing via ePay OneTouch', 'epay-onetouch'));
                             break;
-                        case 4: // Failed
+                        case 4: // Payment failed
                             $order->update_status('failed', sprintf(__('Payment failed: %s', 'epay-onetouch'), $status['payment']['STATE.TEXT']));
                             break;
                     }
                 }
             } else {
-                // Regular payment status check
+                // Check status for registered user payment
                 $status = $this->api->check_payment_status($payment_id);
                 
                 if ($status['status'] === 'OK' && isset($status['payment']['status'])) {
@@ -432,3 +438,4 @@ class WC_Gateway_Epay_Onetouch extends WC_Payment_Gateway {
         }
     }
 }
+
