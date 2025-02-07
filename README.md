@@ -33,6 +33,58 @@ This plugin integrates the ePay OneTouch payment gateway with WordPress and WooC
 - Support for both test and live environments
 - Detailed payment information in order details
 
+## Examples
+
+The `examples` directory contains sample code demonstrating various ways to customize and extend the plugin:
+
+### 1. Custom Checkout Button (`custom-checkout-button.php`)
+Add an ePay OneTouch payment button anywhere on your site:
+
+```php
+// Add button to a product page
+echo add_epay_onetouch_button($product_id);
+```
+
+### 2. Custom Order Processing (`custom-order-processing.php`)
+Handle custom order processing and payment status:
+
+```php
+// Hook into order status changes
+add_action('woocommerce_order_status_changed', 'custom_epay_order_processing', 10, 4);
+```
+
+### 3. Custom Payment Fields (`custom-payment-fields.php`)
+Customize the payment fields on the checkout page:
+
+```php
+// Add custom message above payment options
+add_filter('woocommerce_settings_api_form_fields_epay_onetouch', 'add_custom_epay_field');
+
+// Customize payment fields display
+add_action('woocommerce_epay_onetouch_payment_fields', 'customize_epay_payment_fields');
+```
+
+### 4. Donation Form (`donation-form.php`)
+Implement a donation form with recurring payment option:
+
+```php
+// Add the donation form to any page or post
+[epay_donation_form min_amount="5" default_amount="20" currency="BGN"]
+
+// Process recurring donations automatically
+add_action('process_recurring_donation', 'handle_recurring_donation');
+```
+
+Features:
+- Custom donation amount with minimum limit
+- Donor name collection
+- Optional monthly recurring donations
+- Automatic payment processing
+- Clean, responsive design
+- WooCommerce order integration
+
+For more details, check the individual example files with full code and comments.
+
 ## Support
 
 For support or questions, please contact ePay.bg support or visit their documentation at https://epay.bg
