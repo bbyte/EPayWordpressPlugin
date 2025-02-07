@@ -1,0 +1,680 @@
+Техническа документация за връзка с ePay.bg ONE TOUCH
+
+Съдържание
+
+Описание
+Комуникация
+Оторизация на приложението, издаване на token
+Информация за потребител, платежни инструменти
+Изпращане на пари
+Плащане от нерегистриран потребител
+
+Описание
+ePay.bg ONE TOUCH e интерфейс за комуникация със сървърите на ePay.bg. За да го използвате трябва да имате регистрирано приложение, което потребителите на ePay.bg оторизират да извършва определени действия. Всяко приложение има таен ключ(SECRET), собствен адрес(REPLY_ADDRESS - адрес на страницата ви, на който изпращаме различни заявки в случай на WEB приложение или URL Scheme на мобилното ви приложение), чрез който осъществяваме обратна връзка и уникален идентификатор(APPID), който изпращате с всяка заявка към сървърите ни. В зависимост от правата на приложението ви може да е необходимо с всяка заявка да изпращате и параметър(чексума) удостоверяващ, че заявката идва от вас. Свържете се с Търговския отдел на ePay.bg, за да регистрирате приложението си.
+В зависимост от нуждите ви, приложението може да предоставя различни възможности на потребителите - плащане и провека на сметки, плащания на 10 цифрен код, изпращане и получаване на пари, преглед на история и наличности по платежни инструменти и др. Потребителите може да ползват приложението ви и без профил в ePay.bg или да го оторизират да достъпва профилът им в ePay.bg, могат да изберат дали и кои от регистрираните Микросметка(вътрешна сметка, с която разполага всеки потребител на ePay.bg) и банкови карти да използват или да добавят нови. След успешно завършена оторизация издаваме идентификатор(TOKEN), който впоследствие трябва да подавате в заявките си към нас. Освен APPID и TOKEN с всяка заявка трябва да изпращате и уникален идетификатор на устройството, използвано от потребителя(DEVICEID).
+
+Комуникация със сървърите на ePay.bg
+Комуникацията със сървърите на ePay.bg се извършва посредством JSON REST API. Ако заявката е успешна получавате отговор съдържащ "status": "OK" и евентуално други данни според заявката , в противен случай получавате { "status" : "ERR", "err" : "SOME_ERROR_CODE", "errm" : "Съобщение, което може да покажете на потребителя" }
+Входните точки за тестови цели са:
+API_BASE = https://demo.epay.bg/xdev/api - основен адрес за комуникация, на който изпращате заявките си.
+API_BASE_WEB = https://demo.epay.bg/xdev/mobile - адрес за WEB комуникация с ePay.bg, заявките на него трябва да се изпълняват в съвременен браузър.
+Ако е необходимо изпращането на чексума, валидираща заявката, то става с параметър APPCHECK, чексумата се генерира по следния начин:
+hmac_sha1_hex ( request_data , SECRET ) , където request_data представлява конкатенирани с NEWLINE редове, съдържащи слепени PARAM_NAME и param_value, сортирани във възходящ ред по PARAM_NAME . Ако заявката изисква TOKEN към request_data добавяте и клиентсикят номер на потребителя + NEWLINE
+
+Оторизация на приложението. Получаване и инвалидиране на TOKEN
+При регистрация Без значение дали заявките към нас идват от ваши сървъри или директно от устройствата на крайните потребители, всяка от тях трябва да съдържа уникални идентификатори на приложението(APPID), устройството(DEVICEID) и потребителя(TOKEN).
+Добра идея за идентификатор на устройството(DEVICEID) е да използвате Vendor ID в iOS или ANDROID_ID в Android.
+След като вече сте се свързали с Търговския ни отдел, регистрирали сте приложението си и разполагате с идентификатора му (APPID), трябва да поискате от потребителя на ePay.bg да го оторизира за избраните от вас действия и при успех получавате и последния необходим идентификатор(TOKEN).
+
+    Получаване на TOKEN
+
+Последователността е следната:
+1. Първо пренасочвате в браузър потребителя на адрес за оторизация на приложението:
+GET заявка на API_BASE_WEB/api/start, съдържаща задължителни параметри:
+DEVICEID, APPID, KEY - уникален ключ, чрез който впоследствие търсите резултата от заявката.
+Желателно е да изпратите и данни за устройството на потребителя, които служат за информация и управление на разрешенията по-късно:
+DEVICE_NAME, BRAND, OS , MODEL, OS_VERSION, PHONE
+Ако приложението ви работи само с потребители регистрирани в ePay.bg може да подадете параметър UTYPE със стойност 1, ако искате потребители, които не са регистрирани, използвайте UTYPE = 2
+Примерна заявка за оторизация https://demo.epay.bg/xdev/mobile/api/start?APPID=appid&DEVICEID=deviceid&KEY=uniq_key&DEVICE_NAME=myphone&BRAND=iPhone&OS=iOS&MODEL=iPhone5s&OS_VERSION=8.0&PHONE=1
+Резултат: В зависимост от това дали оторизацията е успешна или не ще покажем на потребителя линк с адрес REPLY_URI/authok при успех и REPLY_URI/authagain при неуспех в случаите на мобилно приложение или REPLY_ADDRESS/?ret=authok, REPLY_ADDRESS/?ret=authagain при web приложения. Тези линкове би трябвало да отворят мобилното ви приложение или да водят към web страницата ви.
+2. Проверка изхода от оторизациятa: След като поребителят е бил върнат в мобилното ви приложение или в WEB страницата ви в случай на успешна оторизация трябва в рамките на 2 минути да вземете код за издаване на TOKEN с:
+GET заявки на API_BASE/api/code/get , съдържаща задължителни параметри:
+DEVICEID, APPID, KEY - уникален ключ от предходната заявка
+Примерна заявка https://demo.epay.bg/xdev/api/api/code/get?APPID=appid&DEVICEID=deviceid&KEY=uniq_key
+Отговор:
+{"status": "OK", "code": "token_code" } Същия отговор може да получите и чрез изпращане на горната заявка без да чакате потребителят да се върне в приложението/страницата ви, защото той може и да не го направи. Ако е отказана или не е довършена оторизацията ще получавате отговор { "status" : "ERR" , "err" : "SOME_ERR" , "errm" : "error to show to user" }
+3. Същинско получаване на TOKEN:
+GET заявка на API_BASE/api/token/get, съдържаща параметри: DEVICEID, APPID, CODE , с отговор:
+{"status": "OK", "TOKEN": "token_string","EXPIRES":"expireunixtime","KIN":"client uniq number" , "USERNAME" : "client username", "REALNAME": "client real name" }
+От тук нататък всички заявки трябва да съдържат APPID, DEVICEID и ТOKEN
+
+    Инвалидиране на TOKEN
+
+GET заявка на API_BASE/api/token/invalidate ( задължителни параметри APPID, DEVICEID, TOKEN )
+
+Информация за потребителя, платежни инструменти
+
+    Обща информация за потребител
+
+GET заявка на API_BASE/user/info (ако искате информация и за платежните инструменти на потребителя се подава параметър PINS = 1 )
+Отговор:
+
+{
+    "status":"OK",
+    "userinfo": {
+        "GSM":"",
+        "PIC":"адрес на снимка на потребителя",
+        "REAL_NAME":"името, с което е регистриран в ePay.bg",
+        "ID":"потребитлески идентификатор",
+        "KIN":"Клиентски Идентификационен Номер",
+        "EMAIL":"user@email.com"
+    },
+    "payment_instruments":[
+            {   
+                "ID":"идентификатор на платежния инструмент, подава се при плащане с него",
+                "VERIFIED":1, /* верифициран ли е платежният инструмент */
+                "PIC":"",/* картинка според типа на платежния инструмент: микросметка или visa или mastercard */
+                "BALANCE":"21015", /* в стотинки */
+                "NAME":"Микросметка", /* микросметка в ePay.bg или банкова карта */
+                "TYPE":2, /* 1 - банкова карта, 2 - микросметка  */
+                "EXPIRES":"" /* дата на изтичане на платежния инструмент, ММ/ГГГГ, микросметките са с неограничен във времето живот */
+            },
+            {
+                "PIC":"",
+                "BALANCE":"", /* балансът на банковите карти се извиква отделно за всяка от тях от потребителя, защото обикновено банките таксуват за тази операция  */
+                "ID":"UsYGw8-pTlZU4DJOAYT914hLVte6sRaUsdWXuK1wELs",
+                "VERIFIED":1,
+                "TYPE":1,
+                "EXPIRES":"03/2017",
+                "NAME":"как потребителят е кръстил картата си"
+            },
+        ],
+
+
+}   
+                        
+
+
+    Информация за платежните инструменти
+
+GET заявка на API_BASE/user/info/pins
+Отговор:
+
+{
+    "status":"OK",
+    "payment_instruments":[
+        {
+            "NAME":"Микросметка",
+            "ID":"UsYGw8-pTlZU4DJOAYT919QVd1EXm2KQ8iD9-2Mr-dQ",
+            "PIC":"",
+            "CARD_TYPE":"", /* първата цифра от номера на картата, ако е банкова карта */
+            "EXPIRES":"",
+            "BALANCE":"9808668", /* в стотинки */
+            "VERIFIED":1,
+            "CARD_TYPE_COUNTRY":"", /* страна на издаване на картата */
+            "CARD_TYPE_DESCR":"", /* информация за платежния инструмент */
+            "TYPE":2    
+        },
+        {
+            "VERIFIED":1,
+            "EXPIRES":"12/2015",
+            "BALANCE":"",
+            "CARD_TYPE":"6",
+            "ID":"UsYGw8-pTlZU4DJOAYT91xPUP8YqpocJScram3nKxVs",
+            "NAME":"ПИБ Маестро",
+            "PIC":"",
+            "CARD_TYPE_DESCR":"",
+            "CARD_TYPE_COUNTRY":"",
+            "TYPE":1
+        },
+        {
+            "CARD_TYPE":"5",
+            "PIC":"",
+            "ID":"UsYGw8-pTlZU4DJOAYT914wtfCccfrIbeMWwUDFeuOM",
+            "NAME":"CCB MC 3",
+            "VERIFIED":1,
+            "EXPIRES":"12/2015",
+            "BALANCE":"",
+            "CARD_TYPE_COUNTRY":"",
+            "TYPE":1,
+            "CARD_TYPE_DESCR":"MasterCard"
+        },
+    ]
+}
+
+    
+
+
+    Информация за наличност на платежни инструменти
+
+
+Тази заявка трябва да се извиква след потвърждение от поребителя, защото повечето банки имат такса за проверка на наличността. Проверката за наличност на микросметка се осъществава с една заявка, която получава ведната отговор с наличността на микросметката.
+Пример за микросметка :
+GET заявка на API_BASE/user/info/pins/balance?PINS=pin_id_microaccount + задължителните APPID,DEVICEID,TOKEN
+Отговор:
+
+{
+    "payment_instruments":[
+        {
+            "NAME":"Микросметка",
+            "ID":"UsYGw8-pTlZU4DJOAYT919QVd1EXm2KQ8iD9-2Mr-dQ",
+            "STATUS":"OK",
+            "EXPIRES":"",
+            "BALANCE":"9808668", /* наличността по микросметката се връща веднага */
+            "TYPE":2
+        }
+    ],
+    "status":"OK"
+}
+
+
+Наличността по банкови карти се проверява с две заявки, изпълнени последователно.
+Първоначално се прави GET заявка на API_BASE/user/info/pins/balance с параметър PINS = pin_id1,pin_id2,pin_idN
+В нейният отговор за всеки проверяван платежен инструмент се връща STATUS и BALANCE
+Ако STATUS = "CHECK" се връща и CHECKID = "check_idN" Ако STATUS = "ОК" или BALANCE = "наличност в стотинки" няма нужда от нова проверка, но ако STATUS = "CHECK" или BALANCE = "" трябва да се извика
+GET заявка на API_BASE/user/info/pins/balance с параметър PINS = pin_id1,pin_id2,pin_idN и параметър CHECKIDS=check_id1,check_idN
+Тази заявка може да се извиква докато не получи STATUS=OK и BALANCE="наличността в стотинки" или STATUS=ERR , добра идея е да се прави с определен timeout.
+Ако не се подаде параметър CHECKIDS=check_id1,check_idN потребителят се таксува отново
+Пример:
+1. GET API_BASE/user/info/pins/balance?appid=YourAppID&token=SomeToken&deviceid=DEVICEID&pins=UsYGw8-pTlZU4DJOAYT914wtfCccfrIbeMWwUDFeuOM
+Отговор:
+
+{
+    "payment_instruments":[
+        {
+            "NAME":"CCB MC 3",
+            "ID":"UsYGw8-pTlZU4DJOAYT914wtfCccfrIbeMWwUDFeuOM",
+            "STATUS":"CHECK", /* ако статусът е CHECK заявката за проверка е приета, и трябва да видите резултата от нея като изпратите същата заявка и добавите параметър CHECKIDS = съответните CHECKID-та  */
+            "CHECKID":"UsYGw8-pTlZU4DJOAYT91xVabb7Od-EXo7Cd4K_0CiY", /* подава се със следващата заявка */
+            "BALANCE":"",
+            "EXPIRES":"",
+            "TYPE":1
+        }
+    ],
+    "status":"OK"
+}
+
+
+2. GET API_BASE/user/info/pins/balance?appid=YourAppID&token=SomeToken&deviceid=DEVICEID&pins=UsYGw8-pTlZU4DJOAYT914wtfCccfrIbeMWwUDFeuOM&checkids=UsYGw8-pTlZU4DJOAYT91xVabb7Od-EXo7Cd4K_0CiY
+Отговор:
+
+    {
+        "status":"OK",
+        "payment_instruments":[
+            {
+                "TYPE":1,
+                "ERR":"ECHECK",
+                "ID":"UsYGw8-pTlZU4DJOAYT914wtfCccfrIbeMWwUDFeuOM",
+                "NAME":"ПИБ Маестро",
+                "ERRM":"Невалидни данни. (514)", /* Грешка, която да се покаже на потребителя */
+                "STATUS":"ERR",
+                "BALANCE":"",
+                "EXPIRES":""
+            }
+        ]
+    }
+
+
+Успешен отговор на същата заявка:
+
+    {
+        "status":"OK",
+        "payment_instruments":[
+            {
+                "TYPE":1,
+                "ID":"UsYGw8-pTlZU4DJOAYT914wtfCccfrIbeMWwUDFeuOM",
+                "NAME":"ПИБ Маестро",
+                "STATUS":"OK",
+                "BALANCE":"34534",
+                "EXPIRES":"03/2016"
+            }
+        ]
+    }
+
+
+
+Изпращане на пари
+ePay.bg ONE TOUCH позволява на крайните потребители да изпращат пари на друг потребител в ePay.bg. В зависимост от правата на приложението ви, потребителят може да изпраща на всички или само на определени за приложението получатели. Плащането може да се извърши както с вече добавен в приложението платежен инструмент, така и с нова карта на мобилната страница на ePay.bg. Плащането се осъществява на три стъпки: Получаване на код за плащане, Проверка на параметрите, Заявка за плащане.
+
+    Получаване на идентификатор за плащането
+
+Идентификаторът, получен от тази заявка служи за последващите проверки на такси, плащенето и проверка на статус от плащането.
+POST заявка на API_BASE/payment/init , съдържаща TYPE="send" .
+В отговор на тази заявка се връща ID, което се използва в последващите заявки.
+При добавяне на параметър EXP=Unix Time, се задава време на валидност на върнатото ID
+
+                    
+{   
+    "payment": {
+        "ID":"UsYGw8-pTlZU4DJOAYT91_v-l30SMjADFA6AYPWYbJI"
+    },
+    "status":"OK"
+}
+
+
+
+POST заявка на API_BASE/payment/init, съдържаща ID, TYPE="send"
+
+{
+    "payment":{
+        "ID":"String"
+    },
+    "status":"String"
+}
+
+
+    Проверка на параметрите, попълнени от потребителя.
+
+Тази заявка трябва да се направи, когато потребителят въведе или промени сума или избере платежен инструмент, тя връща таксите за плащането.
+POST заявка на API_BASE/payment/check, съдържаща ID (от API_BASE/payment/init), TYPE="send", AMOUNT=сумата в стотинки, RCPT=получател, RCPT_TYPE=тип на получателя, DESCRIPTION=описание на плащането, REASON=причина за плащането, PINS(платежен инструмент, чрез който да се извърши плащането,ако няма подаден се връщат таксите за всички) , SHOW=какво да види получателят на плащането за изпращача
+RCPT_TYPE може да бъде KIN-клиентски идентификационен номер,GSM-мобилен номер на получателя,с който е регистриран в ePay.bg, EMAIL-електронна поща на получателя, с която е регистриран в ePay.bg
+SHOW може да бъде едно или няколко от GSM,KIN,EMAIL,NAME, разделени с ','. По подразбиране се показва КИН
+
+{
+    "payment":{
+        "ID":"UsYGw8-pTlZU4DJOAYT91_v-l30SMjADFA6AYPWYbJI",
+        "PAYMENT_INSTRUMENTS":[
+            {   
+                "NAME":"ПИБ Маестро",
+                "TAX":1,
+                "ID":"UsYGw8-pTlZU4DJOAYT91xPUP8YqpocJScram3nKxVs",
+                "STATUS":"OK",
+                "TOTAL":35
+            }
+        ],
+        "AMOUNT":34,
+        "DATA":{
+            "RCPT_TYPE":"KIN",
+            "RCPT":"3894711478"
+        }
+    },
+    "status":"OK"
+}
+
+
+POST заявка на API_BASE/payment/check, съдържаща ID, TYPE="send", AMOUNT, RCPT, RCPT_TYPE, DESCRIPTION, REASON, PINS , SHOW
+
+{
+    "payment":{
+        "ID":"String",
+        "PAYMENT_INSTRUMENTS":[
+            {   
+                "NAME":"String",
+                "TAX":Integer,
+                "ID":"String",
+                "STATUS":"String",
+                "TOTAL":Integer
+            }
+        ],
+        "AMOUNT":Integer,
+        "DATA":{
+            "RCPT_TYPE":"String",
+            "RCPT":"String"
+        }
+    },
+    "status":"String"
+}
+
+
+
+    Изпращане на пари
+
+POST заявка на API_BASE/payment/send/user , съдържаща AMOUNT, DESCRIPTION, PINS,RCPT,RCPT_TYPE, REASON,ID,SHOW=KIN,NAME,EMAIL,GSM
+В отговора в параметър STATE се съдържа резултата от плащането. Може да бъде 2 - Обработва се, 3 - Успешно плащане, 4 - Неуспешно плащане.
+Отговор:
+
+{
+    "payment": {
+        "SHOW.NAME":0,
+        "SHOW.KIN":1,
+        "SHOW.GSM":0,
+        "TOTAL":35,
+        "PINS":"UsYGw8-pTlZU4DJOAYT918PwRo4yHpe9i2EP4MXhQYVswVNAZdgJUljcrW22_Z9D9frQUAwOWHst\nN924CNqh3A",
+        "STATE":2, 
+        "RCPT_TYPE":"KIN",
+        "TAX":1,
+        "REASON":"",
+        "SHOW.EMAIL":0,
+        "STATE.TEXT":"Обработва се",
+        "SHOW":"6051143866",
+        "RCPT":"3894711478",
+        "AMOUNT":34,
+        "DESCRIPTION":"",
+        "SHOW.PIC":0,
+        "NO":"",
+        "ID":"UsYGw8-pTlZU4DJOAYT91_v-l30SMjADFA6AYPWYbJI"
+    },
+    "status":"OK"
+}
+
+
+
+POST заявка на API_BASE/payment/send/user , съдържаща AMOUNT, DESCRIPTION, PINS,RCPT,RCPT_TYPE, REASON,ID,SHOW=KIN,NAME,EMAIL,GSM
+
+{
+    "payment": {
+        "SHOW.NAME":Integer,
+        "SHOW.KIN":Integer,
+        "SHOW.GSM":Integer,
+        "TOTAL":Integer,
+        "PINS":"String",
+        "STATE":Integer, 
+        "RCPT_TYPE":"String",
+        "TAX":Integer,
+        "REASON":"String",
+        "SHOW.EMAIL":Integer,
+        "STATE.TEXT":"String",
+        "SHOW":"String",
+        "RCPT":"String",
+        "AMOUNT":Integer,
+        "DESCRIPTION":"String",
+        "SHOW.PIC":Integer,
+        "NO":"String",
+        "ID":"String"
+    },
+    "status":"String"
+}
+
+
+
+    Проверка на резултата от заявката за изпращане на пари
+
+POST заявка на API_BASE/payment/send/status , съдържаща ID
+В отговора в параметър STATE се съдържа резултата от плащането. Може да бъде 2 - Обработва се, 3 - Успешно плащане, 4 - Неуспешно плащане. В полето STATE.TEXT се съдържа грешка, която може да бъде показана на потребителя.
+Отговор:
+
+{
+    "status":"OK",
+    "payment":{
+        "RCPT":"3894711478",
+        "SHOW":"6051143866",
+        "STATE.TEXT":"Неуспешно плащане(Невалидни данни. (514))",
+        "SHOW.EMAIL":"",
+        "NO":"2000000000032229",
+        "ID":"UsYGw8-pTlZU4DJOAYT91_v-l30SMjADFA6AYPWYbJI",
+        "DESCRIPTION":"",
+        "AMOUNT":34,
+        "SHOW.GSM":"",
+        "SHOW.KIN":"6051143866",
+        "SHOW.NAME":"",
+        "TAX":1,
+        "REASON":"",
+        "RCPT_TYPE":"KIN",
+        "STATE":4,
+        "TOTAL":35,
+        "PINS":"UsYGw8-pTlZU4DJOAYT918PwRo4yHpe9i2EP4MXhQYVswVNAZdgJUljcrW22_Z9D9frQUAwOWHst\nN924CNqh3A"
+    }
+}
+
+или ако картата не е запазена
+
+{
+    "status": "OK",
+    "payment": { 
+        "ID":  "UsYGw8-pTlZU4DJOAYT915SmHpAR07b9BTHwjlZMrIM",
+        "RCPT_TYPE": "KIN",
+        "SHOW.EMAIL": "",
+        "SHOW.NAME": "",
+        "TAX": 102,
+        "NO": "2000000000032229",
+        "STATE.TEXT": "Извършено плащане",
+        "SHOW.GSM": "",
+        "REASON": "reason",
+        "SHOW": "4303137865",
+        "AMOUNT":  50,
+        "RCPT": "4470411058",
+        "SHOW.KIN": "4303137865",
+        "TOTAL": 152,
+        "DESCRIPTION": "DESCR",
+        "STATE": 3
+    },
+    "paid_with": {
+        "CARD_TYPE_COUNTRY": "",
+        "CARD_TYPE_DESCR": "Visa",
+        "CARD_TYPE": "4",
+        "TYPE": 1
+    },
+    "savecard": 0
+}
+
+
+
+заявка на API_BASE/payment/send/status, съдържаща ID
+
+{
+    "status":"String",
+    "payment":{
+        "RCPT":"String",
+        "SHOW":"String",
+        "STATE.TEXT":"String",
+        "SHOW.EMAIL":"String",
+        "NO":"String",
+        "ID":"String",
+        "DESCRIPTION":"String",
+        "AMOUNT":Integer,
+        "SHOW.GSM":"String",
+        "SHOW.KIN":"String",
+        "SHOW.NAME":"String",
+        "TAX":Integer,
+        "REASON":"String",
+        "RCPT_TYPE":"String",
+        "STATE":Integer,
+        "TOTAL":Integer,
+        "PINS":"String"
+    }
+}
+
+или ако картата не е запазена
+
+{
+    "status":"String",
+    "payment":{
+        "RCPT":"String",
+        "SHOW":"String",
+        "STATE.TEXT":"String",
+        "SHOW.EMAIL":"String",
+        "NO":"String",
+        "ID":"String",
+        "DESCRIPTION":"String",
+        "AMOUNT":Integer,
+        "SHOW.GSM":"String",
+        "SHOW.KIN":"String",
+        "SHOW.NAME":"String",
+        "TAX":Integer,
+        "REASON":"String",
+        "RCPT_TYPE":"String",
+        "STATE":Integer,
+        "TOTAL":Integer,
+        "PINS":"String"
+    }
+    "paid_with": {
+        "CARD_TYPE_COUNTRY": "String",
+        "CARD_TYPE_DESCR": "String",
+        "CARD_TYPE": "String",
+        "TYPE": Integer
+    },
+    "savecard": Integer
+}
+
+
+
+Плащане от нерегистриран потребител
+Създава потребител и генерира потребителски идентификатор (TOKEN), след което потребителя може да извърши плащане.
+Потребителя се препраща на API_BASE_WEB/api/payment/noreg/send с GET или POST заявка, съдържаща задължителни параметри:
+- APPID - идентификатор на приложението,
+- DEVICEID - идентификатор на устройството,
+- ID - уникален ключ, чрез който впоследствие търсите резултата от заявката,
+- AMOUNT - сума за плащане в стотинки,
+- RCPT - КИН на получателя,
+- RCPT_TYPE = KIN,
+- DESCRIPTION - описание на превода,
+- REASON - причина за превода,
+
+- SAVECARD - параметърът не е задължителен, при SAVECARD=1 картата автоматично се запазва бъдещи плащания
+
+- CHECKSUM - чексума, удостоверяваща, че заявката идва от вас. Чексумата се генерира по следния начин:
+hmac_sha1_hex ( request_data , SECRET ), където request_data представлява конкатенирани с NEWLINE редове (\n), съдържащи слепени
+PARAM_NAME и param_value, сортирани във възходящ ред по PARAM_NAME. Пример:
+PARAM_NAME1param_value1\nPARAM_NAME2param_value2\n...PARAM_NAMENparam_valueN\n
+
+GET заявка на API_BASE_WEB/api/payment/noreg/send, съдържаща APPID, DEVICEID, ID, AMOUNT, RCPT, RCPT_TYPE, DESCRIPTION, REASON, CHECKSUM
+
+            API_BASE_WEB/api/payment/noreg/send?APPID=2143960160650364377823089976443473298565779337965372776022890068&DEVICEID=1231234&ID=124345678&AMOUNT=10&RCPT=8897458022&RCPT_TYPE=KIN&DESCRIPTION=some descr&REASON=some reason&checksum=c1e47b922bf2c304380c86f3e658ed61de19c192
+    
+
+
+За автоматично запазванe на картата
+GET заявка на API_BASE_WEB/api/payment/noreg/send, съдържаща APPID, DEVICEID, ID, AMOUNT, RCPT, RCPT_TYPE, DESCRIPTION, REASON, SAVECARD, CHECKSUM
+
+            API_BASE_WEB/api/payment/noreg/send?APPID=2143960160650364377823089976443473298565779337965372776022890068&DEVICEID=1231234&ID=124345678&AMOUNT=10&RCPT=8897458022&RCPT_TYPE=KIN&DESCRIPTION=some descr&REASON=some reason&SAVECARD=1&checksum=c1e47b922bf2c304380c86f3e658ed61de19c192
+    
+
+
+    Информация за плащането извършено от нерегистриран потребител
+
+След като е извършено плащане от нерегистриран потребител може да проверите статуса от плащането.
+GET заявки на API_BASE/api/payment/noreg/send/status, съдържаща задължителни параметри: APPID, DEVICEID, ID - уникален ключ,
+чрез който търсите резултата от заявката, RCPT - получател, КИН (клиентски идентификационен номер).
+В отговора в параметър "payment" в STATE се съдържа резултата от плащането. Може да бъде 2 - Обработва се, 3 - Успешно плащане,
+4 - Неуспешно плащане, в параметър STATE.TEXT се съдържа грешка, която може да бъде показана на потребителя, АMOUNT е сумата на
+превода в стотинки, TAX е таксата за превода в стотинки, TOTAL е AMOUNT + TAX в стотинки, RCPT e клиентски идентификационен номер (КИН)
+на получателя на превода, PAYER_KIN e клиентски идентификационен номер (КИН) на наредителя на плащането, В REASON e описана причина
+за превода, в DESCRIPTION - описание на превода, в TOKEN се съдържа потребителски идентификатор (TOKEN), NO е системен код на плащането
+В случай, че потребителя по време на плащането е запазил платежния инструмент (картата), в параметър payment_instrument се съдържа:
+ID - ключ на картата, NAME - Име на картата, CARD_TYPE - първата цифра от номера на картата, CARD_TYPE_DESCR - информация за платежния
+инструмент, TYPE = 1 (банкова карта), EXPIRES - дата на валидност на картата във формат mm/YYYY, VERIFIED - може да бъде 0 - картата не е
+потвърдена или 1 - картата е потвърдена, CARD_TYPE_COUNTRY - страна на издаване на картата
+В случай, че потребителя по време на плащането не е запазил платежния инструмент (картата), в параметър paid_with се съдържа:
+CARD_TYPE_COUNTRY - страна на издаване на картата, CARD_TYPE_DESCR - информация за платежния инструмент,
+CARD_TYPE - първата цифра от номера на картата, ако е банкова карта, TYPE = 1 (банкова карта)
+GET заявка на API_BASE/api/payment/noreg/send/status, съдържаща APPID, DEVICEID, ID, RCPT
+
+{
+    "payment":{
+        "REASON":"причина за превода",
+        "DESCRIPTION":"описание на превода",
+        "AMOUNT":10,
+        "TAX":100,
+        "TOTAL":110,
+        "RCPT_TYPE":"KIN",
+        "RCPT":"8897458022",
+        "PAYER_KIN":"5112074184"
+        "STATE":2,
+        "STATE.TEXT":"Обработва се",
+        "TOKEN": "99823906809141864859059099131376",
+        "NO": "", 
+    },
+    "status":"OK"
+} 
+
+или при запазване на картата:
+
+{
+    "payment":{
+        "REASON":"причина за превода",
+        "DESCRIPTION":"описание на превода",
+        "AMOUNT":10,
+        "TAX":100,
+        "TOTAL":110,
+        "RCPT_TYPE":"KIN",
+        "RCPT":"8897458022",
+        "PAYER_KIN":"5112074184"
+        "STATE":3,
+        "STATE.TEXT":"Извършено плащане",
+        "TOKEN": "99823906809141864859059099131376",
+        "NO":"2000000000032229",
+    },
+    "payment_instrument": {
+        "ID": "UsYGw8-pTlZU4DJOAYT911cDTSmYoCcPYIAaLZp-1FQ",
+        "CARD_REF": "c8fb30bdaed9d9721b4ac215251333900548cca18575ae1f017566c12f8ee626",
+        "NAME": "Visa***1111",
+        "CARD_TYPE": "4",
+        "TYPE": 1,
+        "CARD_TYPE_DESCR": "Visa",
+        "EXPIRES": "04/2020",
+        "VERIFIED": 0,
+        "CARD_TYPE_COUNTRY": "BG"
+    },
+    "savecard": 1,
+    "status":"OK"
+} 
+
+
+или ако картата не е запазена:
+
+{
+    "payment":{
+        "REASON":"причина за превода",
+        "DESCRIPTION":"описание на превода",
+        "AMOUNT":10,
+        "TAX":100,
+        "TOTAL":110,
+        "RCPT_TYPE":"KIN",
+        "RCPT":"8897458022",
+        "PAYER_KIN":"5112074184"
+        "STATE":3,
+        "STATE.TEXT":"Извършено плащане",
+        "TOKEN": "99823906809141864859059099131376",
+        "NO":"2000000000032229",
+    },
+    "paid_with": {
+        "CARD_TYPE": "4",
+        "TYPE": 1,
+        "CARD_TYPE_DESCR": "Visa",
+        "CARD_TYPE_COUNTRY": ""
+    },
+    "savecard": 0,
+    "status":"OK"
+}
+
+
+или ако плащането е неуспешно:
+
+{
+    "payment": {
+        "REASON: "reasondominos",
+        "DESCRIPTION": "descrdominos",
+        "AMOUNT": 140,
+        "TAX": 0,
+        "TOTAL": 140,
+        "RCPT_TYPE": "KIN",
+        "RCPT": "4303137865",
+        "PAYER_KIN": "3099545641",
+        "STATE": 4,
+        "STATE.TEXT": "Неуспешно плащане(Временно не може да бъде извършена. Моля, опитайте по-късно. (1))",
+        "TOKEN": "00000000000000000480783218379645",
+        "NO": "2000000000039033",
+    },
+    "paid_with": {
+        "CARD_TYPE_DESCR": "Visa",
+        "TYPE": 1,
+        "CARD_TYPE": "4",
+        ""CARD_TYPE_COUNTRY": "BG"
+    },
+    "savecard": 0, 
+    "status  "OK"
+}
+
+
+или ако заявката не е платена:
+
+{
+    "status":"OK"
+    "msg":"NOT PAID",
+} 
+
+
+или при изтекла заявка:
+
+{
+    "status":"OK"
+    "msg":"EXPIRED",
+} 
+
+или при грешна:
+
+{
+    "status": "ERR",
+    "err": "NO_DATA",                                           // тип на грешката.
+    "errm" "Неуспешна заявка. Моля, свържете се с поддръжка",   // описание на грешката
+} 
