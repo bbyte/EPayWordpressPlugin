@@ -1,12 +1,15 @@
 # ePay OneTouch Payment Gateway for WordPress
 
-This plugin integrates the ePay OneTouch payment gateway with WordPress and WooCommerce, allowing you to accept payments through ePay.bg.
+This plugin integrates the ePay OneTouch payment gateway with WordPress and WooCommerce, allowing you to accept payments through ePay.bg using their latest API.
 
 ## Requirements
 
-- WordPress 5.0 or higher
-- WooCommerce 3.0 or higher
-- PHP 7.2 or higher
+- WordPress 4.9.3 or higher
+- WooCommerce 3.0.0 or higher
+- PHP 5.6 or higher
+- cURL PHP extension
+- JSON PHP extension
+- Modern browser with Promise support
 - Valid ePay OneTouch merchant account with APP ID and Secret Key
 
 ## Installation
@@ -32,17 +35,23 @@ This plugin integrates the ePay OneTouch payment gateway with WordPress and WooC
 - Automatic order status updates
 - Support for both test and live environments
 - Detailed payment information in order details
+- Modern Promise-based JavaScript API
+- Secure device ID generation using Web Crypto API
+- Fallback storage mechanisms for different environments
 
 ## Examples
 
 The `examples` directory contains sample code demonstrating various ways to customize and extend the plugin:
 
 ### 1. Custom Checkout Button (`custom-checkout-button.php`)
-Add an ePay OneTouch payment button anywhere on your site:
+Add an ePay OneTouch payment button anywhere on your site with device ID handling:
 
 ```php
 // Add button to a product page
 echo add_epay_onetouch_button($product_id);
+
+// The button will automatically handle device ID generation and storage
+// using the new Promise-based API
 ```
 
 ### 2. Custom Order Processing (`custom-order-processing.php`)
@@ -54,7 +63,7 @@ add_action('woocommerce_order_status_changed', 'custom_epay_order_processing', 1
 ```
 
 ### 3. Custom Payment Fields (`custom-payment-fields.php`)
-Customize the payment fields on the checkout page:
+Customize the payment fields and handle device identification on the checkout page:
 
 ```php
 // Add custom message above payment options
@@ -62,17 +71,23 @@ add_filter('woocommerce_settings_api_form_fields_epay_onetouch', 'add_custom_epa
 
 // Customize payment fields display
 add_action('woocommerce_epay_onetouch_payment_fields', 'customize_epay_payment_fields');
+
+// The payment fields will automatically integrate with the new
+// Promise-based device ID handling system
 ```
 
 ### 4. Donation Form (`donation-form.php`)
-Implement a donation form with recurring payment option:
+Implement a donation form with recurring payment option and secure device identification:
 
 ```php
 // Add the donation form to any page or post
 [epay_donation_form min_amount="5" default_amount="20" currency="BGN"]
 
-// Process recurring donations automatically
+// Process recurring donations automatically with device tracking
 add_action('process_recurring_donation', 'handle_recurring_donation');
+
+// The form includes built-in device ID generation and storage
+// using the Web Crypto API and Promise-based handling
 ```
 
 Features:

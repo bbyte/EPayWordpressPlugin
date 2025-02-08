@@ -7,20 +7,55 @@
  * - Donor name
  * - Option for recurring monthly donations
  * - Integration with ePay OneTouch
+ * - Secure device identification using Promise-based API
+ *
+ * @package     EPay OneTouch Payment Gateway
+ * @author      Nikola Kotarov
+ * @version     2.0.0
+ * @license     GPL-2.0+
+ *
+ * Features:
+ * - Responsive design optimized for all devices
+ * - Secure payment processing through ePay OneTouch
+ * - Device identification using Web Crypto API
+ * - Support for recurring donations
+ * - Comprehensive error handling
+ * - User-friendly feedback messages
+ *
+ * Security measures:
+ * - CSRF protection using nonces
+ * - Secure device ID generation
+ * - Input validation and sanitization
+ * - XSS prevention
+ * - Secure storage handling
  */
 
-// Add shortcode for the donation form
+/**
+ * Register the donation form shortcode.
+ * Usage: [epay_donation_form min_amount="5" default_amount="20" currency="BGN"]
+ */
 add_shortcode('epay_donation_form', 'epay_donation_form_shortcode');
 
+/**
+ * Generate the donation form HTML and handle form processing.
+ *
+ * @param array $atts Shortcode attributes
+ *                    min_amount: Minimum donation amount
+ *                    default_amount: Default donation amount
+ *                    currency: Currency code (e.g., BGN)
+ * @return string HTML output of the donation form
+ */
 function epay_donation_form_shortcode($atts) {
-    // Parse attributes
+    // Parse and sanitize shortcode attributes
+    // These values control the form's behavior and display
     $atts = shortcode_atts(array(
         'min_amount' => 5, // Minimum donation amount
         'default_amount' => 20, // Default donation amount
         'currency' => 'BGN'
     ), $atts);
 
-    // Get gateway instance
+    // Get the ePay OneTouch payment gateway instance
+    // This is used to check if the gateway is available and properly configured
     $gateways = WC()->payment_gateways->payment_gateways();
     $gateway = isset($gateways['epay_onetouch']) ? $gateways['epay_onetouch'] : null;
     
@@ -28,11 +63,14 @@ function epay_donation_form_shortcode($atts) {
         return '<p>' . __('ePay OneTouch payment gateway is not available.', 'epay-onetouch') . '</p>';
     }
 
-    // Start output buffering
+    // Start output buffering to capture the form HTML
+    // This allows us to return the form as a string for the shortcode
     ob_start();
     ?>
     <form action="" method="post" class="epay-donation-form" id="epay-donation-form">
         <?php wp_nonce_field('epay_donation_action', 'epay_donation_nonce'); ?>
+        
+        <input type="hidden" id="epay_device_id" name="epay_device_id" value="">
         
         <div class="form-row">
             <label for="donor_name"><?php _e('Your Name', 'epay-onetouch'); ?></label>
@@ -64,6 +102,47 @@ function epay_donation_form_shortcode($atts) {
         </button>
     </form>
 
+    // Initialize the device ID handling and form validation
+    // This script ensures secure device identification and proper form submission
+    <script>
+    jQuery(function($) {
+        // Wait for the EPayOneTouchHandler to be initialized
+        const checkHandler = setInterval(() => {
+            if (window.EPayOneTouchHandler) {
+                clearInterval(checkHandler);
+                
+                // Initialize device ID
+                EPayOneTouchHandler.initDeviceId()
+                    .then(() => {
+                        console.log('Device ID initialized successfully');
+                    })
+                    .catch(error => {
+                        console.error('Error initializing device ID:', error);
+                        $('.epay-donation-form').prepend(
+                            '<div class="epay-device-error">' +
+                            '<?php _e("There was an error initializing the payment system. Please try again.", "epay-onetouch"); ?>' +
+                            '</div>'
+                        );
+                    });
+            }
+        }, 100);
+        
+        // Handle form submission
+        $('#epay-donation-form').on('submit', function(e) {
+            const deviceId = $('#epay_device_id').val();
+            if (!deviceId) {
+                e.preventDefault();
+                $('.epay-donation-form').prepend(
+                    '<div class="epay-device-error">' +
+                    '<?php _e("Please wait for the payment system to initialize.", "epay-onetouch"); ?>' +
+                    '</div>'
+                );
+                return false;
+            }
+        });
+    });
+    </script>
+    
     <style>
         .epay-donation-form {
             max-width: 400px;
@@ -71,6 +150,14 @@ function epay_donation_form_shortcode($atts) {
             padding: 20px;
             background: #f8f8f8;
             border-radius: 5px;
+        }
+        
+        .epay-device-error {
+            color: #dc3232;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #fff;
+            border-left: 4px solid #dc3232;
         }
         .form-row {
             margin-bottom: 15px;
