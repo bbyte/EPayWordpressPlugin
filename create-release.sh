@@ -29,9 +29,11 @@ echo "Copying plugin files..."
 FILES_TO_COPY=(
     "epay-onetouch-payment.php"
     "README.md"
-    "API.md"
-    "API_BG.md"
+    "epay-onetouch-api.md"
+    "assets"
+    "examples"
     "includes"
+    "languages"
 )
 
 for file in "${FILES_TO_COPY[@]}"; do
@@ -53,6 +55,16 @@ find "$PLUGIN_DIR" -name ".DS_Store" -exec rm -f {} +
 find "$PLUGIN_DIR" -name "node_modules" -exec rm -rf {} +
 find "$PLUGIN_DIR" -name ".idea" -exec rm -rf {} +
 find "$PLUGIN_DIR" -name ".vscode" -exec rm -rf {} +
+find "$PLUGIN_DIR" -name "*.map" -exec rm -f {} +
+find "$PLUGIN_DIR" -name "*.ts" -exec rm -f {} +
+find "$PLUGIN_DIR" -name "tsconfig.json" -exec rm -f {} +
+find "$PLUGIN_DIR" -name "package.json" -exec rm -f {} +
+find "$PLUGIN_DIR" -name "package-lock.json" -exec rm -f {} +
+find "$PLUGIN_DIR" -name "composer.json" -exec rm -f {} +
+find "$PLUGIN_DIR" -name "composer.lock" -exec rm -f {} +
+
+# Remove development examples
+rm -rf "$PLUGIN_DIR/examples"
 
 # Create zip file
 echo "Creating zip file..."
