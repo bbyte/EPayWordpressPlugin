@@ -33,29 +33,74 @@ if (!defined('ABSPATH')) {
 
 class EPay_OneTouch_API {
     /**
-     * API credentials and settings
+     * Base URL for the ePay API
+     * @var string
+     */
+    private $api_url;
+
+    /**
+     * Application ID provided by ePay
+     * @var string
      */
     private $app_id;
+
+    /**
+     * Secret key for API authentication
+     * @var string
+     */
     private $secret_key;
+
+    /**
+     * Whether to use test mode
+     * @var bool
+     */
     private $is_test_mode;
-    private $api_url;
+
+    /**
+     * Authentication token
+     * @var string
+     */
     private $token;
+
+    /**
+     * KIN number
+     * @var string
+     */
     private $kin;
 
     /**
      * Constructor
      *
-     * @param string $app_id ePay application ID
-     * @param string $secret_key ePay secret key
-     * @param bool $is_test_mode Whether to use test mode
+     * Initializes the API with credentials from WooCommerce settings
+     * or direct parameters if provided.
+     *
+     * @param string|null $app_id Optional ePay application ID
+     * @param string|null $secret_key Optional ePay secret key
+     * @param bool|null $is_test_mode Optional test mode flag
      */
-    public function __construct($app_id, $secret_key, $is_test_mode = false) {
-        $this->app_id = $app_id;
-        $this->secret_key = $secret_key;
-        $this->is_test_mode = $is_test_mode;
-        $this->api_url = $is_test_mode ? EPAY_ONETOUCH_DEMO_API_URL : EPAY_ONETOUCH_API_URL;
+    public function __construct($app_id = null, $secret_key = null, $is_test_mode = null) {
+        // Get settings from WooCommerce if not provided directly
+        $gateway_settings = get_option('woocommerce_epay_onetouch_settings', array());
+        
+        // Initialize test mode
+        $this->is_test_mode = $is_test_mode ?? (isset($gateway_settings['testmode']) && $gateway_settings['testmode'] === 'yes');
+        
+        // Set API URLs
+        $api_url_test = !empty($gateway_settings['api_url_test']) ? 
+            $gateway_settings['api_url_test'] : 'https://demo.epay.bg/xdev/api';
+        $api_url_prod = !empty($gateway_settings['api_url_prod']) ? 
+            $gateway_settings['api_url_prod'] : 'https://epay.bg/api';
+        $this->api_url = $this->is_test_mode ? $api_url_test : $api_url_prod;
+        
+        // Set credentials
+        $this->app_id = $app_id ?? ($gateway_settings['app_id'] ?? '');
+        $this->secret_key = $secret_key ?? ($gateway_settings['secret'] ?? '');
+        
+        // Initialize other properties
         $this->token = null;
         $this->kin = null;
+        $this->device_id = $this->generate_device_id();
+        $this->reply_address = $gateway_settings['reply_address'] ?? home_url('/wc-api/epay_onetouch_callback');
     }
 
     /**
@@ -78,11 +123,15 @@ class EPay_OneTouch_API {
     /**
      * Get token using authorization code
      *
-     * @param string $device_id Device identifier
      * @param string $code Authorization code
+     * @param string|null $device_id Optional device identifier
      * @return array Response from API
      */
-    public function get_token($device_id, $code) {
+    public function get_token($code, $device_id = null) {
+        if ($device_id === null) {
+            $device_id = $this->device_id;
+        }
+
         $params = array(
             'APPID' => $this->app_id,
             'DEVICEID' => $device_id,
@@ -94,6 +143,13 @@ class EPay_OneTouch_API {
         if ($response['status'] === 'OK') {
             $this->token = $response['TOKEN'];
             $this->kin = $response['KIN'];
+            return array(
+                'token' => $response['TOKEN'],
+                'expires' => $response['EXPIRES'],
+                'kin' => $response['KIN'],
+                'username' => $response['USERNAME'],
+                'realname' => $response['REALNAME']
+            );
         }
 
         return $response;
@@ -102,25 +158,36 @@ class EPay_OneTouch_API {
     /**
      * Invalidate token
      *
-     * @param string $device_id Device identifier
-     * @return array Response from API
+     * @param string|null $token Optional token to invalidate (uses stored token if not provided)
+     * @param string|null $device_id Optional device identifier
+     * @return array|bool Response from API
      */
-    public function invalidate_token($device_id) {
-        if (!$this->token) {
-            throw new Exception(__('No token available to invalidate', 'epay-onetouch'));
+    public function invalidate_token($token = null, $device_id = null) {
+        if ($token === null) {
+            if (!$this->token) {
+                throw new Exception(__('No token available to invalidate', 'epay-onetouch'));
+            }
+            $token = $this->token;
+        }
+
+        if ($device_id === null) {
+            $device_id = $this->device_id;
         }
 
         $params = array(
             'APPID' => $this->app_id,
             'DEVICEID' => $device_id,
-            'TOKEN' => $this->token
+            'TOKEN' => $token
         );
 
         $response = $this->make_request('api/token/invalidate', $params);
 
         if ($response['status'] === 'OK') {
-            $this->token = null;
-            $this->kin = null;
+            if ($token === $this->token) {
+                $this->token = null;
+                $this->kin = null;
+            }
+            return true;
         }
 
         return $response;
@@ -256,36 +323,39 @@ class EPay_OneTouch_API {
 
         return $this->make_request('payment/send/user', $params, 'POST');
     }
-    }
-
     /**
      * Check payment status
      *
+     * Checks the status of a payment using either token-based or non-registered flow.
+     * 
      * @param string $payment_id Payment ID from ePay
      * @param bool $use_token Whether to use token-based status check
+     * @param string|null $device_id Optional device identifier (required for some API endpoints)
      * @return array Response from API
+     * @throws Exception if token is required but not available, or if API request fails
      */
-    public function check_payment_status($payment_id, $use_token = false) {
+    public function check_payment_status($payment_id, $use_token = false, $device_id = null) {
+        if ($device_id === null) {
+            $device_id = $this->device_id;
+        }
+
+        $params = array(
+            'APPID' => $this->app_id,
+            'DEVICEID' => $device_id,
+            'ID' => $payment_id
+        );
+
         if ($use_token) {
             if (!$this->token) {
                 throw new Exception(__('No valid token available for status check', 'epay-onetouch'));
             }
-
-            $params = array(
-                'APPID' => $this->app_id,
-                'TOKEN' => $this->token,
-                'ID' => $payment_id
-            );
-
+            $params['TOKEN'] = $this->token;
             return $this->make_request('payment/send/status', $params, 'POST');
-        } else {
-            $params = array(
-                'APPID' => $this->app_id,
-                'PAYMENT_ID' => $payment_id
-            );
-
-            return $this->make_request('api/payment/noreg/send/status', $params);
         }
+
+        // Add checksum for non-token requests
+        $params['APPCHECK'] = $this->generate_hmac($params);
+        return $this->make_request('payment/check', $params, 'GET');
     }
 
     /**
@@ -457,13 +527,16 @@ class EPay_OneTouch_API {
     }
 
     /**
-     * Generate unique device ID for order
+     * Generate unique device ID
      *
-     * @param WC_Order $order WooCommerce order
+     * @param WC_Order|null $order Optional WooCommerce order
      * @return string Device ID
      */
-    private function generate_device_id($order) {
-        return 'wc_order_' . $order->get_id() . '_' . time();
+    private function generate_device_id($order = null) {
+        if ($order instanceof WC_Order) {
+            return 'wc_order_' . $order->get_id() . '_' . time();
+        }
+        return md5(get_site_url());
     }
 
     /**
@@ -503,24 +576,6 @@ class EPay_OneTouch_API {
     private function format_amount($amount) {
         return number_format($amount, 2, '.', '');
     }
-} {
-    /**
-     * Base URL for the ePay API
-     * @var string
-     */
-    private $api_base;
-
-    /**
-     * Application ID provided by ePay
-     * @var string
-     */
-    private $app_id;
-
-    /**
-     * Secret key for API authentication
-     * @var string
-     */
-    private $secret;
 
     /**
      * Unique device identifier
@@ -540,28 +595,9 @@ class EPay_OneTouch_API {
      */
     private $test_mode;
     
-    public function __construct() {
-        $gateway_settings = get_option('woocommerce_epay_onetouch_settings');
-        $this->test_mode = isset($gateway_settings['testmode']) && $gateway_settings['testmode'] === 'yes';
-        
-        // Get API URLs from settings, falling back to defaults if not set
-        $api_url_test = !empty($gateway_settings['api_url_test']) ? 
-            $gateway_settings['api_url_test'] : 'https://demo.epay.bg/xdev/api';
-        $api_url_prod = !empty($gateway_settings['api_url_prod']) ? 
-            $gateway_settings['api_url_prod'] : 'https://epay.bg/api';
-            
-        $this->api_base = $this->test_mode ? $api_url_test : $api_url_prod;
-        
-        $this->app_id = isset($gateway_settings['app_id']) ? $gateway_settings['app_id'] : '';
-        $this->secret = isset($gateway_settings['secret']) ? $gateway_settings['secret'] : '';
-        $this->reply_address = isset($gateway_settings['reply_address']) ? $gateway_settings['reply_address'] : home_url('/wc-api/epay_onetouch_callback');
-        $this->device_id = $this->generate_device_id();
-    }
+
     
-    private function generate_device_id() {
-        // Generate a unique device ID for the website
-        return md5(get_site_url());
-    }
+
     
     private function generate_checksum($params, $kin = '') {
         ksort($params);
@@ -633,57 +669,9 @@ class EPay_OneTouch_API {
         return $result['code'];
     }
     
-    public function get_token($code) {
-        $params = array(
-            'APPID' => $this->app_id,
-            'DEVICEID' => $this->device_id,
-            'CODE' => $code
-        );
-        
-        $response = wp_remote_get($this->api_base . '/api/token/get?' . http_build_query($params));
-        
-        if (is_wp_error($response)) {
-            throw new Exception($response->get_error_message());
-        }
-        
-        $body = wp_remote_retrieve_body($response);
-        $result = json_decode($body, true);
-        
-        if (!$result || isset($result['status']) && $result['status'] === 'ERR') {
-            throw new Exception(isset($result['errm']) ? $result['errm'] : __('Неуспешно получаване на токен', 'epay-onetouch'));
-        }
-        
-        return array(
-            'token' => $result['TOKEN'],
-            'expires' => $result['EXPIRES'],
-            'kin' => $result['KIN'],
-            'username' => $result['USERNAME'],
-            'realname' => $result['REALNAME']
-        );
-    }
+
     
-    public function invalidate_token($token) {
-        $params = array(
-            'APPID' => $this->app_id,
-            'DEVICEID' => $this->device_id,
-            'TOKEN' => $token
-        );
-        
-        $response = wp_remote_get($this->api_base . '/api/token/invalidate?' . http_build_query($params));
-        
-        if (is_wp_error($response)) {
-            throw new Exception($response->get_error_message());
-        }
-        
-        $body = wp_remote_retrieve_body($response);
-        $result = json_decode($body, true);
-        
-        if (!$result || isset($result['status']) && $result['status'] === 'ERR') {
-            throw new Exception(isset($result['errm']) ? $result['errm'] : __('Неуспешно анулиране на токен', 'epay-onetouch'));
-        }
-        
-        return true;
-    }
+
 
     /**
      * Инициализира ново плащане
@@ -911,35 +899,5 @@ class EPay_OneTouch_API {
         return $result;
     }
     
-    /**
-     * Проверява статуса на плащане
-     *
-     * @param string $payment_id ID на плащането
-     * @return array Статус на плащането
-     * @throws Exception при грешка в API заявката
-     */
-    public function check_payment_status($payment_id) {
-        $params = array(
-            'APPID' => $this->app_id,
-            'DEVICEID' => $this->device_id,
-            'ID' => $payment_id
-        );
-        
-        $params['APPCHECK'] = $this->generate_checksum($params);
-        
-        $response = wp_remote_get($this->api_base . '/payment/check?' . http_build_query($params));
-        
-        if (is_wp_error($response)) {
-            throw new Exception($response->get_error_message());
-        }
-        
-        $body = wp_remote_retrieve_body($response);
-        $result = json_decode($body, true);
-        
-        if (!$result || isset($result['status']) && $result['status'] === 'ERR') {
-            throw new Exception(isset($result['errm']) ? $result['errm'] : __('Unknown error occurred', 'epay-onetouch'));
-        }
-        
-        return $result;
-    }
+
 }

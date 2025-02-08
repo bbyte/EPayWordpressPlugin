@@ -169,26 +169,5 @@ function EPay_OneTouch() {
     return EPay_OneTouch::instance();
 }
 
-// Global for backwards compatibility
-$GLOBALS['epay_onetouch'] = EPay_OneTouch();;
-    
-    // Add the gateway to WooCommerce
-    add_filter('woocommerce_payment_gateways', 'add_epay_onetouch_gateway');
-}
-
-function add_epay_onetouch_gateway($methods) {
-    $methods[] = 'WC_Gateway_Epay_Onetouch';
-    return $methods;
-}
-
-// Hook into WordPress init to ensure WooCommerce is loaded first
-add_action('plugins_loaded', 'epay_onetouch_init', 11);
-
-// Add settings link on plugin page
-function epay_onetouch_settings_link($links) {
-    $settings_link = '<a href="admin.php?page=wc-settings&tab=checkout&section=epay_onetouch">' . __('Settings', 'epay-onetouch') . '</a>';
-    array_unshift($links, $settings_link);
-    return $links;
-}
-$plugin = plugin_basename(__FILE__);
-add_filter("plugin_action_links_$plugin", 'epay_onetouch_settings_link');
+// Initialize the plugin
+$GLOBALS['epay_onetouch'] = EPay_OneTouch();
